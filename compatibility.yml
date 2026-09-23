@@ -1,10 +1,11 @@
 # What this collector targets, and where it runs.
 #   plugin:    does the target plugin itself run on this platform (at the version below)
 #   collector: does this collector jar run there — yes | untested | no
+#     yes: checked on a real server by the core's testkit (./gradlew integrationTest)
 #     untested: expected to load (Bukkit API), never checked on that server
 #     folia: no until plugin.yml declares folia-supported: true
 minecraft: 1.21.11
-core: v0.4.0
+core: v0.5.0
 plugin:
   name: PhoenixCrates Lite
   compiled-against: 6.2.1
@@ -12,7 +13,7 @@ plugin:
   source: https://modrinth.com/plugin/phoenix-crates-lite
 platforms:
   paper: { plugin: yes, collector: yes }
-  spigot: { plugin: yes, collector: untested }
+  spigot: { plugin: yes, collector: yes }
   bukkit: { plugin: unknown, collector: no }
   folia: { plugin: yes, collector: no }
   purpur: { plugin: yes, collector: yes }

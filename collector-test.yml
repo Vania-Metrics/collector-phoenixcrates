@@ -1,0 +1,9 @@
+# What the test server needs besides the core; read by the core's testkit (CollectorTestConfig).
+# The first jar of a list is the target plugin: its version is checked against compatibility.yml.
+# The collector compiles against PhoenixCrates Lite; Premium is private and cannot be tested in CI.
+collectors: [crate]
+runtime: java21
+plugins:
+  bukkit:
+    - url: https://cdn.modrinth.com/data/9hyTHJcs/versions/ks24Yz4t/PhoenixCratesLite-6.2.1.jar
+      sha512: e0f947983c789b84bdeebb4700fe0bfb87ad6e84e2eff0ab6c924f6d5c62a66cf50a27a60bdbe713f83c9f6199be9a6d0858bb2ccefd692c1c08e822903f9a62

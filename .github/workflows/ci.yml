@@ -1,0 +1,38 @@
+# Builds this collector against the core it pins, then runs it on real servers: the platforms
+# compatibility.yml marks yes on every push, all of them on a tag or by hand.
+# The steps live in the core, .github/workflows/collector.yml; the ref below must be the one
+# gradle.properties pins (vaniaCore.ref) and compatibility.yml names (core:), the workflow checks.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths: ['src/**', '*.gradle.kts', 'gradle/**', 'gradle.properties', 'compatibility.yml', 'collector-test.yml', '.github/**']
+  workflow_dispatch:
+    inputs:
+      cells:
+        description: 'blocking: platforms marked yes; all: the untested ones too'
+        type: choice
+        options: [blocking, all]
+        default: all
+      platforms:
+        description: 'Comma-separated platforms, empty for all'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: Vania-Metrics/core/.github/workflows/collector.yml@v0.5.0
+    with:
+      cells: ${{ inputs.cells || (github.ref_type == 'tag' && 'all') || 'blocking' }}
+      platforms: ${{ inputs.platforms }}
+    secrets:
+      CORE_DEPLOY_KEY: ${{ secrets.VANIA_CORE_DEPLOY_KEY }}

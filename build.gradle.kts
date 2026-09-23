@@ -37,3 +37,6 @@ tasks.processResources {
 tasks.jar {
     archiveFileName = "vania-metrics-${rootProject.name}-$version.jar"
 }
+
+// Integration tests on real servers: see testkit/collector-it.gradle.kts in the core.
+apply(from = vaniaCoreDir.resolve("testkit/collector-it.gradle.kts"))
