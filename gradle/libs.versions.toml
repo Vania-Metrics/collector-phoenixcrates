@@ -1,0 +1,36 @@
+# Dépendances de COMPILATION seulement — aucun jar tiers n'est embarqué dans le
+# jar produit. L'API VaniaMetrics n'est pas ici : elle vient du dépôt git core
+# (voir gradle.properties et settings.gradle.kts).
+#
+# Les plugins tiers viennent du dépôt Maven de Modrinth, à l'id de version exact :
+# c'est le même fichier, octet pour octet, que le lien de téléchargement.
+#
+# Les empreintes SHA-256 de tout ce qui est résolu sont épinglées dans
+# gradle/verification-metadata.xml. Après une montée de version :
+#   ./gradlew --write-verification-metadata sha256 build
+#
+# paper-api EST UN INSTANTANÉ DATÉ : Paper ne publie pas de version figée de son
+# API, l'horodatage est la version. Il est lu comme une version figée (voir
+# settings.gradle.kts), donc SANS ses dépendances transitives : le bundle « paper »
+# déclare celles dont la compilation a besoin, aux versions du .pom de paper-api.
+# PhoenixCrates Lite — classes en 52 (Java 8), donc lisibles par javac --release 21 :
+# contrairement à ExcellentEconomy, l'API se compile directement. Seule la classe
+# interne managers.players.PlayerData passe par la réflexion, et c'est un choix.
+[versions]
+paper-api = "1.21.11-R0.1-20260511.115010-91"
+adventure = "4.26.1"
+
+[libraries]
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
+adventure-api = { module = "net.kyori:adventure-api", version.ref = "adventure" }
+adventure-key = { module = "net.kyori:adventure-key", version.ref = "adventure" }
+examination-api = { module = "net.kyori:examination-api", version = "1.3.0" }
+jspecify = { module = "org.jspecify:jspecify", version = "1.0.0" }
+checker-qual = { module = "org.checkerframework:checker-qual", version = "3.49.2" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version = "24.1.0" }
+guava = { module = "com.google.guava:guava", version = "33.3.1-jre" }
+# PhoenixCratesLite 6.2.1 — maven.modrinth:<projet>:<id de version Modrinth>
+phoenixcrates = { module = "maven.modrinth:phoenix-crates-lite", version = "ks24Yz4t" }
+
+[bundles]
+paper = ["paper-api", "adventure-api", "adventure-key", "examination-api", "jspecify", "checker-qual", "jetbrains-annotations", "guava"]

@@ -1,3 +1,0 @@
-# Jars des plugins tiers dont ce collecteur dépend à la COMPILATION.
-# Une ligne par URL. Aucun jar tiers n'est embarqué dans le jar produit.
-https://cdn.modrinth.com/data/9hyTHJcs/versions/ks24Yz4t/PhoenixCratesLite-6.2.1.jar
