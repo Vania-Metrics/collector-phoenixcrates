@@ -28,264 +28,261 @@ import fr.samflix.vaniametrics.api.Collector;
 import fr.samflix.vaniametrics.api.Config;
 import fr.samflix.vaniametrics.api.Counter;
 import fr.samflix.vaniametrics.api.Gauge;
-import fr.samflix.vaniametrics.api.Joueur;
 import fr.samflix.vaniametrics.api.MetricRegistry;
 import fr.samflix.vaniametrics.api.Platform;
+import fr.samflix.vaniametrics.api.PlayerRef;
 import fr.samflix.vaniametrics.api.PlayerSeries;
 
 /**
- * Métriques PhoenixCrates — et surtout : LE HASARD TIENT-IL SES PROMESSES ?
+ * PhoenixCrates metrics — and above all: does the randomness keep its promises?
  *
- * <p>C'est la seule chose qu'on ne peut pas voir en jeu. Un joueur qui ouvre cent coffres sent
- * bien que la récompense annoncée à 2 % ne tombe jamais, mais il ne peut rien démontrer ; un
- * administrateur non plus. Deux métriques suffisent à trancher :
+ * <p>That's the one thing you can't see in-game. A player who opens a hundred crates can sense
+ * that the reward advertised at 2% never comes up, but can't prove it; neither can an admin.
+ * Two metrics settle it:
  *
  * <pre>{@code
- *   # probabilité OBSERVÉE sur 30 jours, rapportée à celle qui est CONFIGURÉE
+ *   # OBSERVED probability over 30 days, against the CONFIGURED one
  *     sum by (crate,reward) (increase(mc_crate_rewards_total{alternative="false"}[30d]))
  *   / ignoring(reward) group_left
  *     sum by (crate)        (increase(mc_crate_rewards_total{alternative="false"}[30d]))
  *   / mc_crate_reward_expected_ratio
- *   # 1.0 = conforme, 0.5 = deux fois moins souvent que promis
+ *   # 1.0 = matches, 0.5 = half as frequent as promised
  * }</pre>
  *
- * <p>IL N'EXISTE AUCUN MOYEN DE MESURER LE TIRAGE BRUT, et il a fallu l'apprendre sur le serveur.
- * Ce module déclarait au départ un compteur {@code reward_draws} alimenté par
- * {@code CrateRewardSelectionEvent} — qui n'est jamais monté. Son nom trompe : l'événement est
- * déclenché AVANT le tirage, avec la liste des candidats et une récompense à {@code null}, pour
- * laisser un plugin tiers imposer son choix ; c'est seulement après, si personne n'a répondu, que
- * {@code selectByWeight} tire. Il n'y a donc pas de compte rendu de tirage à écouter.
+ * <p>There is no way to measure the raw draw, which had to be learned the hard way on the
+ * server. This module originally declared a {@code reward_draws} counter fed by
+ * {@code CrateRewardSelectionEvent} — which never fires as its name suggests. The event fires
+ * BEFORE the draw, with the list of candidates and a {@code null} reward, to let a third-party
+ * plugin impose its own choice; only afterward, if nobody responded, does
+ * {@code selectByWeight} actually draw. So there's no draw outcome to listen for.
  *
- * <p>Le repli est {@code rewards_total} filtré sur {@code alternative="false"} : ce qui est remis
- * SANS avoir été substitué. Reste une imprécision assumée — les limites de gain et les
- * permissions retirent des candidats avant le tirage, sans que cela se voie. D'où
- * {@code crate_reward_candidates}, qui dit combien de lots étaient réellement en jeu.
+ * <p>The fallback is {@code rewards_total} filtered on {@code alternative="false"}: what gets
+ * handed out WITHOUT having been substituted. An acknowledged imprecision remains — win limits
+ * and permissions remove candidates before the draw, invisibly. Hence
+ * {@code crate_reward_candidates}, which says how many rewards were actually in play.
  *
- * <p>DEUX RÉGIMES DANS UNE SEULE CLASSE. Les compteurs sont alimentés par ÉVÉNEMENTS et ne
- * coûtent rien au scrape : ils sont déjà à jour. Les jauges — configuration et état par joueur —
- * demandent de parcourir des listes, d'où {@link #enFond()} vrai. Les deux mécaniques cohabitent
- * ici parce qu'elles décrivent le même objet ; les séparer obligerait à partager les
- * identifiants de coffres entre deux classes.
+ * <p>Two regimes live in one class. The counters are fed by events and cost nothing at scrape
+ * time: they're already current. The gauges — configuration and per-player state — require
+ * walking lists, hence {@link #isBackground()} being true. Both mechanics live here together
+ * because they describe the same object; splitting them would force sharing crate identifiers
+ * between two classes.
  *
- * <p>TOUS LES GESTIONNAIRES SONT EN {@code MONITOR} ET EN O(1). Les événements de PhoenixCrates
- * sont déclenchés sur le fil principal, dans la pile d'appel de l'ouverture elle-même — vérifié
- * au bytecode. Un gestionnaire qui prendrait une milliseconde la prendrait sur le tick.
+ * <p>All handlers run at {@code MONITOR} and in O(1). PhoenixCrates' events fire on the main
+ * thread, in the call stack of the open itself — verified at the bytecode level. A handler that
+ * took a millisecond would take it out of the tick.
  */
 public final class CratesCollector implements Collector, Listener {
 
-	private final Platform plateforme;
+	private final Platform platform;
 	private final Config config;
 
-	/** Le pont de réflexion vers l'état persisté, ou {@code null} s'il n'a pas pu se résoudre. */
-	private DonneesJoueur donnees;
+	/** The reflection bridge to persisted state, or {@code null} if it could not be resolved. */
+	private PlayerDataBridge playerData;
 
-	private Counter tentatives;
-	private Counter ouvertures;
-	private Counter ouverturesJoueur;
-	private Counter echecs;
-	private Counter recompenses;
-	private Gauge candidats;
-	private Counter apercus;
-	private Counter poses;
+	private Counter attempts;
+	private Counter opens;
+	private Counter playerOpens;
+	private Counter failures;
+	private Counter rewards;
+	private Gauge candidates;
+	private Counter previews;
+	private Counter placements;
 	private Counter confirmations;
-	private Counter remises;
+	private Counter deliveries;
 
 	private Gauge types;
-	private Gauge cles;
-	private Gauge recompensesConfigurees;
-	private Gauge poids;
-	private Gauge ratioAttendu;
-	private Gauge clesRequises;
-	private Gauge limiteGains;
-	private Gauge attente;
-	private Gauge cout;
+	private Gauge keys;
+	private Gauge rewardsConfigured;
+	private Gauge weight;
+	private Gauge expectedRatio;
+	private Gauge requiredKeys;
+	private Gauge winLimit;
+	private Gauge cooldown;
+	private Gauge cost;
 
-	private Gauge clesJoueur;
-	private Gauge ouverturesTotalJoueur;
-	private Gauge attenteJoueur;
-	private Gauge gainsJoueur;
+	private Gauge playerKeys;
+	private Gauge playerTotalOpens;
+	private Gauge playerCooldown;
+	private Gauge playerRewardWins;
 	private PlayerSeries series;
 
 	/**
-	 * Les ouvertures commencées et pas encore confirmées, par identifiant de joueur.
+	 * Opens started and not yet confirmed, by player identifier.
 	 *
-	 * <p>LE MOTIF D'UN REFUS NE SE LIT NULLE PART. {@code Crate.openCrate} construit treize
-	 * exceptions distinctes, toutes avec un message DÉJÀ TRADUIT et aucun code : classer dessus
-	 * casserait au premier changement de langue du serveur.
+	 * <p>The reason for a refusal can't be read anywhere. {@code Crate.openCrate} throws thirteen
+	 * distinct exceptions, all with an ALREADY TRANSLATED message and no code: classifying on
+	 * that would break on the server's first language change.
 	 *
-	 * <p>D'où cet appariement. {@code CratePreOpenEvent} et {@code CrateOpenEvent} sont dans la
-	 * même pile d'appel et le même tick ; ce qui reste ici après un tick est une ouverture qui
-	 * n'a pas abouti, et l'instantané pris à l'entrée dit pourquoi.
+	 * <p>Hence this pairing. {@code CratePreOpenEvent} and {@code CrateOpenEvent} share the same
+	 * call stack and tick; whatever is still here after one tick is an open that didn't
+	 * complete, and the snapshot taken on entry says why.
 	 */
-	private final Map<String, Tentative> enAttente = new ConcurrentHashMap<>();
+	private final Map<String, Attempt> pending = new ConcurrentHashMap<>();
 
-	/** Ce qu'on savait au moment où l'ouverture a été demandée. */
-	private record Tentative(String coffre, String raisonProbable) {}
+	/** What we knew at the moment the open was requested. */
+	private record Attempt(String crate, String likelyReason) {}
 
-	public CratesCollector(Platform plateforme, Config config) {
-		this.plateforme = plateforme;
+	public CratesCollector(Platform platform, Config config) {
+		this.platform = platform;
 		this.config = config;
 	}
 
 	@Override
-	public String nom() {
+	public String name() {
 		return "crate";
 	}
 
 	@Override
-	public String origine() {
+	public String source() {
 		return "PhoenixCrates";
 	}
 
 	@Override
-	public boolean enFond() {
+	public boolean isBackground() {
 		return true;
 	}
 
 	@Override
-	public boolean filPrincipal() {
-		// Parcourt les joueurs connectés et l'API du plugin, qui n'est pas conçue pour être lue
-		// d'un autre fil.
+	public boolean needsMainThread() {
+		// Walks online players and the plugin's API, which isn't designed to be read from
+		// another thread.
 		return true;
 	}
 
 	@Override
-	public long intervalleSecondes() {
-		return config.entier("collector.crate.interval", 30);
+	public long intervalSeconds() {
+		return config.getInt("collector.crate.interval", 30);
 	}
 
-	// ------------------------------------------------------------------ déclaration
+	// ------------------------------------------------------------------ declaration
 
 	@Override
-	public void declarer(MetricRegistry r) {
-		tentatives = r.counter("crate_open_attempts_total",
-				"Ouvertures DEMANDÉES, abouties ou non. Vérifie l'invariant "
-						+ "attempts = opens + failures ; un écart signale que le plugin a ouvert "
-						+ "un coffre sans passer par le chemin normal.",
+	public void declare(MetricRegistry r) {
+		attempts = r.counter("crate_open_attempts_total",
+				"Opens REQUESTED, whether they completed or not. Checks the invariant "
+						+ "attempts = opens + failures; a gap means the plugin opened a crate "
+						+ "without going through the normal path.",
 				"crate");
-		ouvertures = r.counter("crate_opens_total",
-				"Ouvertures abouties, tous joueurs confondus.", "crate");
-		ouverturesJoueur = r.counter("crate_player_opens_total",
-				"Ouvertures abouties, joueur par joueur et coffre par coffre. Compte DEPUIS LE "
-						+ "DÉMARRAGE de l'exportateur ; pour le total de toujours, voir "
-						+ "mc_crate_player_opens, que le plugin persiste.",
+		opens = r.counter("crate_opens_total",
+				"Opens completed, across all players.", "crate");
+		playerOpens = r.counter("crate_player_opens_total",
+				"Opens completed, per player and per crate. Counts SINCE THE EXPORTER "
+						+ "STARTED; for the all-time total, see mc_crate_player_opens, which "
+						+ "the plugin persists.",
 				"player", "uuid", "crate");
-		echecs = r.counter("crate_open_failures_total",
-				"Ouvertures refusées. « reason » est DÉDUIT de l'état du joueur au moment de la "
-						+ "demande, car le plugin ne rend qu'un message traduit : cooldown, "
-						+ "no_key, money, cancelled, other.",
+		failures = r.counter("crate_open_failures_total",
+				"Opens refused. \"reason\" is INFERRED from the player's state at the time "
+						+ "of the request, since the plugin only returns a translated message: "
+						+ "cooldown, no_key, money, cancelled, other.",
 				"crate", "reason");
 
-		recompenses = r.counter("crate_rewards_total",
-				"Récompenses effectivement REMISES. « alternative » distingue le lot de "
-						+ "consolation du lot tiré.",
+		rewards = r.counter("crate_rewards_total",
+				"Rewards actually HANDED OUT. \"alternative\" distinguishes the consolation "
+						+ "reward from the drawn one.",
 				"crate", "reward", "alternative");
-		candidats = r.gauge("crate_reward_candidates",
-				"Lots réellement en jeu au dernier tirage. Plus bas que "
-						+ "crate_rewards_configured quand des limites de gain ou des permissions "
-						+ "ont écarté des récompenses : c'est ce qui explique qu'un joueur ne "
-						+ "puisse plus gagner une pièce qu'il a déjà obtenue.",
+		candidates = r.gauge("crate_reward_candidates",
+				"Rewards actually in play at the last draw. Lower than "
+						+ "crate_rewards_configured when win limits or permissions removed "
+						+ "rewards: this is what explains why a player can no longer win a "
+						+ "reward they already got.",
 				"crate");
 		confirmations = r.counter("crate_selective_confirms_total",
-				"Choix confirmés en mode sélectif, où le joueur désigne son lot.",
+				"Choices confirmed in selective mode, where the player picks their reward.",
 				"crate", "reward");
-		apercus = r.counter("crate_previews_total",
-				"Aperçus ouverts sans ouvrir le coffre : de l'intérêt qui ne se convertit pas.",
+		previews = r.counter("crate_previews_total",
+				"Previews opened without opening the crate: interest that doesn't convert.",
 				"crate");
-		poses = r.counter("crate_placements_total",
-				"Coffres physiques posés dans le monde.", "crate", "world");
-		remises = r.counter("crate_deliveries_total",
-				"REMISES d'objets, et non objets remis : huit clés données d'un coup comptent "
-						+ "pour une. « source » vaut key_grant, crate_grant ou reward_grant. "
-						+ "Seules les clés PHYSIQUES passent par là — donner une clé virtuelle "
-						+ "ne déclenche aucun événement et ne se voit que comme un saut de "
-						+ "mc_crate_player_keys.",
+		placements = r.counter("crate_placements_total",
+				"Physical crates placed in the world.", "crate", "world");
+		deliveries = r.counter("crate_deliveries_total",
+				"Item DELIVERIES, not items delivered: eight keys given at once count as "
+						+ "one. \"source\" is key_grant, crate_grant or reward_grant. Only "
+						+ "PHYSICAL keys go through here — granting a virtual key fires no "
+						+ "event and only shows up as a jump in mc_crate_player_keys.",
 				"source");
 
-		// --- configuration, relue à chaque passage : un rechargement la change sans redémarrage
-		types = r.gauge("crate_types", "Types de coffres déclarés.", "enabled");
-		cles = r.gauge("crate_keys", "Clés déclarées.", "virtual");
-		recompensesConfigurees = r.gauge("crate_rewards_configured",
-				"Récompenses déclarées sur un coffre. En version Lite le plafond est 5 : cette "
-						+ "jauge dit quand on le touche.",
+		// --- configuration, re-read on every pass: a reload changes it without a restart
+		types = r.gauge("crate_types", "Crate types declared.", "enabled");
+		keys = r.gauge("crate_keys", "Keys declared.", "virtual");
+		rewardsConfigured = r.gauge("crate_rewards_configured",
+				"Rewards declared on a crate. The Lite edition caps this at 5: this gauge "
+						+ "says when that cap is hit.",
 				"crate");
-		poids = r.gauge("crate_reward_weight",
-				"Poids brut d'une récompense dans le tirage. Ce N'EST PAS un pourcentage.",
+		weight = r.gauge("crate_reward_weight",
+				"Raw weight of a reward in the draw. This is NOT a percentage.",
 				"crate", "reward");
-		ratioAttendu = r.gauge("crate_reward_expected_ratio",
-				"Probabilité ATTENDUE d'une récompense, entre 0 et 1, normalisée PAR NOUS "
-						+ "(poids / somme des poids). Décrit la configuration du tirage, pas la "
-						+ "loi effective : les récompenses garanties, les limites de gain et les "
-						+ "permissions s'y ajoutent ensuite.",
+		expectedRatio = r.gauge("crate_reward_expected_ratio",
+				"EXPECTED probability of a reward, between 0 and 1, normalized BY US "
+						+ "(weight / sum of weights). Describes the draw's configuration, not "
+						+ "the effective odds: guaranteed rewards, win limits and permissions "
+						+ "are applied on top of it.",
 				"crate", "reward");
-		clesRequises = r.gauge("crate_reward_required_keys",
-				"Clés exigées pour prétendre à une récompense. C'EST LA SEULE NOTION DE RARETÉ "
-						+ "du plugin : il n'existe aucun getRarity() dans son API.",
+		requiredKeys = r.gauge("crate_reward_required_keys",
+				"Keys required to be eligible for a reward. This is the ONLY notion of "
+						+ "rarity the plugin has: there is no getRarity() in its API.",
 				"crate", "reward");
-		limiteGains = r.gauge("crate_reward_win_limit",
-				"Nombre maximal de fois qu'une récompense peut être gagnée. NÉGATIF = sans "
-						+ "limite : c'est -1 que rend le plugin, relevé sur ses coffres "
-						+ "d'exemple, et non 0 comme on pourrait le supposer.",
+		winLimit = r.gauge("crate_reward_win_limit",
+				"Maximum number of times a reward can be won. NEGATIVE means unlimited: "
+						+ "-1 is what the plugin returns, observed on its sample crates, not 0 "
+						+ "as one might assume.",
 				"crate", "reward");
-		attente = r.gauge("crate_open_cooldown_seconds",
-				"Délai imposé entre deux ouvertures d'un même coffre.", "crate");
-		cout = r.gauge("crate_open_cost",
-				"Prix d'une ouverture. « currency » est le moteur de coût configuré, ce qui "
-						+ "laisse la porte ouverte aux monnaies multiples comme pour l'économie.",
+		cooldown = r.gauge("crate_open_cooldown_seconds",
+				"Delay imposed between two opens of the same crate.", "crate");
+		cost = r.gauge("crate_open_cost",
+				"Price of an open. \"currency\" is the configured cost engine, which leaves "
+						+ "the door open to multiple currencies, as with the economy module.",
 				"crate", "currency");
 
-		// --- par joueur, bornés par PlayerSeries
-		clesJoueur = r.gauge("crate_player_keys",
-				"Clés VIRTUELLES en stock chez un joueur connecté. Les clés physiques sont dans "
-						+ "son inventaire et ne sont pas comptées ici.",
+		// --- per player, bounded by PlayerSeries
+		playerKeys = r.gauge("crate_player_keys",
+				"VIRTUAL keys in stock for a connected player. Physical keys are in their "
+						+ "inventory and are not counted here.",
 				"player", "uuid", "key");
-		ouverturesTotalJoueur = r.gauge("crate_player_opens",
-				"Ouvertures d'un joueur DEPUIS TOUJOURS, par type de coffre. Persisté par le "
-						+ "plugin : c'est la seule métrique de ce module qui ne repart pas de "
-						+ "zéro au redémarrage.",
+		playerTotalOpens = r.gauge("crate_player_opens",
+				"A player's opens EVER, by crate type. Persisted by the plugin: the only "
+						+ "metric in this module that doesn't reset to zero on restart.",
 				"player", "uuid", "crate");
-		attenteJoueur = r.gauge("crate_player_cooldown_seconds",
-				"Temps d'attente RESTANT avant qu'un joueur puisse rouvrir un coffre. Zéro s'il "
-						+ "peut ouvrir tout de suite.",
+		playerCooldown = r.gauge("crate_player_cooldown_seconds",
+				"Time REMAINING before a player can reopen a crate. Zero if they can open "
+						+ "right away.",
 				"player", "uuid", "crate");
-		gainsJoueur = r.gauge("crate_player_reward_wins",
-				"Combien de fois un joueur a gagné une récompense donnée, depuis toujours. "
-						+ "SANS étiquette « crate » : le plugin indexe ces gains par identifiant "
-						+ "de récompense SEUL, donc deux coffres qui nomment tous deux un lot "
-						+ "« diamant » partagent le compteur. Ce n'est pas un choix, c'est ce que "
-						+ "la donnée permet.",
+		playerRewardWins = r.gauge("crate_player_reward_wins",
+				"How many times a player has won a given reward, ever. WITHOUT a \"crate\" "
+						+ "label: the plugin indexes these wins by reward identifier ALONE, so "
+						+ "two crates that both name a reward \"diamond\" share the counter. "
+						+ "That's not a design choice, it's what the data allows.",
 				"player", "uuid", "reward");
 
 		series = new PlayerSeries(r, config);
 	}
 
-	// ------------------------------------------------------------------ branchement
+	// ------------------------------------------------------------------ wiring
 
 	/**
-	 * Résout le pont de réflexion. Rend faux si l'état par joueur est hors de portée.
+	 * Resolves the reflection bridge. Returns false if per-player state is out of reach.
 	 *
-	 * <p>Rendre faux N'EST PAS une raison de renoncer au module, contrairement à ce que fait
-	 * celui de l'économie : là-bas tout passait par la réflexion, ici les dix compteurs
-	 * événementiels restent parfaitement valides. L'appelant enregistre donc le collecteur dans
-	 * tous les cas.
+	 * <p>Returning false is NOT a reason to give up on the module, unlike the economy one:
+	 * there, everything went through reflection, so a failure left nothing to measure. Here the
+	 * ten event-driven counters remain perfectly valid. The caller registers the collector
+	 * either way.
 	 */
-	boolean brancherEtat(ClassLoader chargeur) {
-		donnees = DonneesJoueur.resoudre(chargeur, plateforme);
-		return donnees != null;
+	boolean bindState(ClassLoader loader) {
+		playerData = PlayerDataBridge.resolve(loader, platform);
+		return playerData != null;
 	}
 
-	/** Voir le module betonquest : PlayerSeries borne ce qui est publié, ceci ce qui est retenu. */
-	void oublier(String identifiant) {
-		enAttente.remove(identifiant);
+	/** See the betonquest module: PlayerSeries bounds what's published, this bounds what's kept. */
+	void forget(String identifier) {
+		pending.remove(identifier);
 	}
 
-	// ------------------------------------------------------------------ événements
+	// ------------------------------------------------------------------ events
 
 	/**
-	 * L'entrée : on note la demande, et ce qu'on savait de l'état du joueur.
+	 * The entry point: record the request, and what we knew of the player's state.
 	 *
-	 * <p>{@code ignoreCancelled = false} à dessein : une ouverture annulée par un autre plugin
-	 * est précisément l'un des refus qu'on veut compter.
+	 * <p>{@code ignoreCancelled = false} on purpose: an open cancelled by another plugin is
+	 * exactly one of the refusals we want to count.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
 	public void onPreOpen(CratePreOpenEvent e) {
@@ -293,68 +290,68 @@ public final class CratesCollector implements Collector, Listener {
 		if (type == null || e.getPlayer() == null) {
 			return;
 		}
-		String coffre = identifiant(type.getIdentifier());
+		String crate = identifier(type.getIdentifier());
 		if (e.isCancelled()) {
-			echecs.inc(coffre, "cancelled");
+			failures.inc(crate, "cancelled");
 			return;
 		}
-		tentatives.inc(coffre);
-		// UN SEUL EMPLACEMENT PAR JOUEUR, donc un second clic ÉCRASE le premier. Sans la ligne
-		// ci-dessous la tentative écrasée disparaissait sans être comptée nulle part : relevé
-		// sur le serveur, 31 tentatives pour 11 ouvertures et 3 échecs — dix-sept évaporées.
-		// Ce qui est écrasé n'a par définition pas abouti : c'est un échec.
-		Tentative precedente = enAttente.put(e.getPlayer().getUniqueId().toString(),
-				new Tentative(coffre, raisonProbable(type, e.getPlayer())));
-		if (precedente != null) {
-			echecs.inc(precedente.coffre(), precedente.raisonProbable());
+		attempts.inc(crate);
+		// ONE SLOT PER PLAYER, so a second click OVERWRITES the first. Without the line below,
+		// the overwritten attempt disappeared uncounted: observed on the server, 31 attempts
+		// for 11 opens and 3 failures — seventeen vanished. What gets overwritten is, by
+		// definition, an attempt that didn't complete: it's a failure.
+		Attempt previous = pending.put(e.getPlayer().getUniqueId().toString(),
+				new Attempt(crate, likelyReason(type, e.getPlayer())));
+		if (previous != null) {
+			failures.inc(previous.crate(), previous.likelyReason());
 		}
 	}
 
-	/** L'aboutissement : l'ouverture a eu lieu, la demande n'est plus en attente. */
+	/** Completion: the open happened, the request is no longer pending. */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onOpen(CrateOpenEvent e) {
 		CrateType type = e.getType();
 		if (type == null || e.getPlayer() == null) {
 			return;
 		}
-		String coffre = identifiant(type.getIdentifier());
-		ouvertures.inc(coffre);
-		Joueur qui = Joueur.de(e.getPlayer().getUniqueId(), e.getPlayer().getName());
-		ouverturesJoueur.inc(qui.etiquettes(coffre));
-		enAttente.remove(e.getPlayer().getUniqueId().toString());
+		String crate = identifier(type.getIdentifier());
+		opens.inc(crate);
+		PlayerRef ref = PlayerRef.of(e.getPlayer().getUniqueId(), e.getPlayer().getName());
+		playerOpens.inc(ref.labels(crate));
+		pending.remove(e.getPlayer().getUniqueId().toString());
 	}
 
 	/**
-	 * Les candidats au tirage — et NON le tirage lui-même.
+	 * The draw's candidates — NOT the draw itself.
 	 *
-	 * <p>Ne pas se fier au nom de l'événement : il est déclenché AVANT que le hasard ne tranche,
-	 * pour offrir à un plugin tiers la possibilité d'imposer un lot. {@code getSelectedReward()}
-	 * y vaut {@code null} en temps normal — c'est ce qui rendait muet le compteur de tirages
-	 * qu'on avait d'abord écrit ici.
+	 * <p>Don't trust the event's name: it fires BEFORE randomness decides, to give a
+	 * third-party plugin the chance to impose a reward. {@code getSelectedReward()} is
+	 * {@code null} under normal conditions — which is what made the draw counter originally
+	 * written here silent.
 	 *
-	 * <p>Ce qui EST exploitable, c'est {@code getCandidates()} : la liste des lots encore
-	 * éligibles une fois retirés ceux qu'une limite de gain ou une permission a écartés. Un
-	 * écart avec {@code crate_rewards_configured} dit qu'un joueur n'a plus accès à tout.
+	 * <p>What IS usable is {@code getCandidates()}: the list of rewards still eligible once a
+	 * win limit or permission has removed some. A gap against {@code crate_rewards_configured}
+	 * says a player no longer has access to everything.
 	 *
-	 * <p>Ne se déclenche qu'en mode ALÉATOIRE : il vient du générateur pondéré.
+	 * <p>Only fires in RANDOM mode: it comes from the weighted generator.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onSelection(CrateRewardSelectionEvent e) {
 		if (e.getCrate() == null || e.getCrate().getType() == null || e.getCandidates() == null) {
 			return;
 		}
-		candidats.set(e.getCandidates().size(),
-				identifiant(e.getCrate().getType().getIdentifier()));
+		candidates.set(e.getCandidates().size(),
+				identifier(e.getCrate().getType().getIdentifier()));
 	}
 
-	/** La remise effective. MONITOR obligatoire : un autre plugin peut changer la récompense. */
+	/** The actual handout. MONITOR is required: another plugin can change the reward. */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onReward(CrateRewardPlayerEvent e) {
 		if (e.getReward() == null || e.getCrate() == null || e.getCrate().getType() == null) {
 			return;
 		}
-		recompenses.inc(identifiant(e.getCrate().getType().getIdentifier()),
-				identifiant(e.getReward().getIdentifier()),
+		rewards.inc(identifier(e.getCrate().getType().getIdentifier()),
+				identifier(e.getReward().getIdentifier()),
 				Boolean.toString(e.getReward().isAlternative()));
 	}
 
@@ -364,162 +361,162 @@ public final class CratesCollector implements Collector, Listener {
 				|| e.getCrate().getType() == null) {
 			return;
 		}
-		confirmations.inc(identifiant(e.getCrate().getType().getIdentifier()),
-				identifiant(e.getSelectedReward().getIdentifier()));
+		confirmations.inc(identifier(e.getCrate().getType().getIdentifier()),
+				identifier(e.getSelectedReward().getIdentifier()));
 	}
 
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	public void onPreview(CratePreviewOpenEvent e) {
 		if (e.getCrateType() != null) {
-			apercus.inc(identifiant(e.getCrateType().getIdentifier()));
+			previews.inc(identifier(e.getCrateType().getIdentifier()));
 		}
 	}
 
 	/**
-	 * Pose d'un coffre physique.
+	 * Placement of a physical crate.
 	 *
-	 * <p>Attention au nommage, qui diverge de tous les autres événements du plugin :
-	 * {@code getCrate()} rend ici un {@code CrateType} et non un {@code CrateInstance}, et le
-	 * joueur s'appelle {@code getWhoPlaced()}.
+	 * <p>Watch the naming, which diverges from every other event in this plugin:
+	 * {@code getCrate()} here returns a {@code CrateType}, not a {@code CrateInstance}, and the
+	 * player is {@code getWhoPlaced()}.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
 	public void onPlace(CratePlaceEvent e) {
 		if (e.getCrate() == null || e.getLocation() == null || e.getLocation().getWorld() == null) {
 			return;
 		}
-		poses.inc(identifiant(e.getCrate().getIdentifier()), e.getLocation().getWorld().getName());
+		placements.inc(identifier(e.getCrate().getIdentifier()), e.getLocation().getWorld().getName());
 	}
 
 	/**
-	 * Remise d'objets — le seul point d'observation des clés distribuées.
+	 * Item delivery — the only observation point for distributed keys.
 	 *
-	 * <p>Et il est PARTIEL, ce qu'il faut savoir avant de s'y fier : {@code KeyFacade.giveKey}
-	 * écrit les clés virtuelles directement dans les données du joueur, sans déclencher le
-	 * moindre événement. Seules les clés physiques passent ici.
+	 * <p>And it's PARTIAL, which matters before relying on it: {@code KeyFacade.giveKey} writes
+	 * virtual keys directly into the player's data, without firing any event. Only physical
+	 * keys go through here.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onDelivery(ItemDeliveryEvent e) {
 		if (e.getSource() != null) {
-			remises.inc(e.getSource().name().toLowerCase(Locale.ROOT));
+			deliveries.inc(e.getSource().name().toLowerCase(Locale.ROOT));
 		}
 	}
 
-	// ------------------------------------------------------------------ relevé
+	// ------------------------------------------------------------------ collection
 
 	@Override
-	public void relever(MetricRegistry r) {
-		releverConfiguration();
-		releverJoueurs();
-		// Ce qui traîne encore ici a plus d'un relevé : l'ouverture n'a pas abouti.
-		viderLesOrphelines();
+	public void collect(MetricRegistry r) {
+		collectConfiguration();
+		collectPlayers();
+		// Anything still pending here has outlived more than one scrape: the open didn't complete.
+		flushOrphaned();
 	}
 
-	private void releverConfiguration() {
-		var gestionnaire = PhoenixCratesAPI.getCratesManager();
-		int actifs = 0;
-		int inactifs = 0;
-		for (CrateType type : gestionnaire.getCrateTypes()) {
+	private void collectConfiguration() {
+		var manager = PhoenixCratesAPI.getCratesManager();
+		int enabled = 0;
+		int disabled = 0;
+		for (CrateType type : manager.getCrateTypes()) {
 			if (type.isEnabled()) {
-				actifs++;
+				enabled++;
 			} else {
-				inactifs++;
+				disabled++;
 			}
-			String coffre = identifiant(type.getIdentifier());
-			attente.set(type.getOpenCooldownSeconds(), coffre);
-			cout.set(type.getOpenMoneyCost(), coffre, monnaie(type));
+			String crate = identifier(type.getIdentifier());
+			cooldown.set(type.getOpenCooldownSeconds(), crate);
+			cost.set(type.getOpenMoneyCost(), crate, currency(type));
 
-			var lots = type.getRegisteredRewards();
-			recompensesConfigurees.set(lots.size(), coffre);
+			var rewardList = type.getRegisteredRewards();
+			rewardsConfigured.set(rewardList.size(), crate);
 
-			// La somme EXCLUT les alternatives : elles ne participent pas au tirage, elles s'y
-			// substituent. Les inclure gonflerait le dénominateur et ferait paraître toutes les
-			// probabilités plus faibles qu'elles ne sont.
-			double somme = 0;
-			for (Reward lot : lots) {
-				if (!lot.isAlternative()) {
-					somme += lot.getWeight();
+			// The sum EXCLUDES alternatives: they don't take part in the draw, they substitute
+			// for it. Including them would inflate the denominator and make every probability
+			// look lower than it is.
+			double sum = 0;
+			for (Reward reward : rewardList) {
+				if (!reward.isAlternative()) {
+					sum += reward.getWeight();
 				}
 			}
-			for (Reward lot : lots) {
-				String nom = identifiant(lot.getIdentifier());
-				poids.set(lot.getWeight(), coffre, nom);
-				clesRequises.set(lot.getRequiredKeys(), coffre, nom);
-				limiteGains.set(lot.getWinLimits(), coffre, nom);
-				// getPercentage() rendrait le POIDS BRUT — son bytecode fait littéralement
-				// « return getWeight() ». La normalisation doit être la nôtre.
-				ratioAttendu.set(
-						somme <= 0 || lot.isAlternative() ? 0 : lot.getWeight() / somme,
-						coffre, nom);
+			for (Reward reward : rewardList) {
+				String rewardId = identifier(reward.getIdentifier());
+				weight.set(reward.getWeight(), crate, rewardId);
+				requiredKeys.set(reward.getRequiredKeys(), crate, rewardId);
+				winLimit.set(reward.getWinLimits(), crate, rewardId);
+				// getPercentage() would return the RAW WEIGHT — its bytecode literally does
+				// "return getWeight()". The normalization has to be ours.
+				expectedRatio.set(
+						sum <= 0 || reward.isAlternative() ? 0 : reward.getWeight() / sum,
+						crate, rewardId);
 			}
 		}
-		types.set(actifs, "true");
-		types.set(inactifs, "false");
+		types.set(enabled, "true");
+		types.set(disabled, "false");
 
-		int virtuelles = 0;
-		int physiques = 0;
+		int virtual = 0;
+		int physical = 0;
 		for (Key k : PhoenixCratesAPI.getKeysManager().getRegisteredKeys()) {
 			if (k.isVirtual()) {
-				virtuelles++;
+				virtual++;
 			} else {
-				physiques++;
+				physical++;
 			}
 		}
-		cles.set(virtuelles, "true");
-		cles.set(physiques, "false");
+		keys.set(virtual, "true");
+		keys.set(physical, "false");
 	}
 
-	private void releverJoueurs() {
-		if (donnees == null) {
+	private void collectPlayers() {
+		if (playerData == null) {
 			return;
 		}
-		var connectes = Bukkit.getOnlinePlayers().stream()
-				.map(j -> Joueur.de(j.getUniqueId(), j.getName()))
+		var online = Bukkit.getOnlinePlayers().stream()
+				.map(p -> PlayerRef.of(p.getUniqueId(), p.getName()))
 				.toList();
-		var retenus = series.retenir(connectes,
-				clesJoueur, ouverturesTotalJoueur, attenteJoueur, gainsJoueur);
-		if (retenus.isEmpty()) {
+		var selected = series.select(online,
+				playerKeys, playerTotalOpens, playerCooldown, playerRewardWins);
+		if (selected.isEmpty()) {
 			return;
 		}
 
-		var gestionnaireCoffres = PhoenixCratesAPI.getCratesManager();
-		var gestionnaireCles = PhoenixCratesAPI.getKeysManager();
-		var gestionnaireJoueurs = PhoenixCratesAPI.getPlayersManager();
-		var idCoffres = gestionnaireCoffres.getCratesIdentifier();
-		var idCles = gestionnaireCles.getKeysIdentifier();
-		boolean detailGains = config.actif("collector.crate.player_reward_wins", true);
+		var cratesManager = PhoenixCratesAPI.getCratesManager();
+		var keysManager = PhoenixCratesAPI.getKeysManager();
+		var playersManager = PhoenixCratesAPI.getPlayersManager();
+		var crateIds = cratesManager.getCratesIdentifier();
+		var keyIds = keysManager.getKeysIdentifier();
+		boolean detailWins = config.getBoolean("collector.crate.player_reward_wins", true);
 
-		for (Joueur qui : retenus) {
-			Player joueur = Bukkit.getPlayer(java.util.UUID.fromString(qui.uuid()));
-			if (joueur == null) {
+		for (PlayerRef ref : selected) {
+			Player player = Bukkit.getPlayer(java.util.UUID.fromString(ref.uuid()));
+			if (player == null) {
 				continue;
 			}
-			// FALSE, ET JAMAIS TRUE. Le booléen à vrai déclenche une lecture en base si le
-			// cache est froid ; getCachedDataNow fait pire, il lève une exception. Avec faux,
-			// c'est un accès de table de hachage et rien d'autre.
-			Object etat = gestionnaireJoueurs.getPlayerIfCached(joueur, false);
-			if (etat == null) {
+			// FALSE, AND NEVER TRUE. The boolean set to true triggers a database read if the
+			// cache is cold; getCachedDataNow is worse, it throws. With false, it's a hash
+			// table lookup and nothing more.
+			Object data = playersManager.getPlayerIfCached(player, false);
+			if (data == null) {
 				continue;
 			}
-			for (String cle : idCles) {
-				clesJoueur.set(donnees.clesVirtuelles(etat, cle), qui.etiquettes(identifiant(cle)));
+			for (String key : keyIds) {
+				playerKeys.set(playerData.virtualKeys(data, key), ref.labels(identifier(key)));
 			}
-			for (String coffre : idCoffres) {
-				String nom = identifiant(coffre);
-				ouverturesTotalJoueur.set(donnees.ouvertures(etat, coffre), qui.etiquettes(nom));
-				attenteJoueur.set(donnees.attenteSecondes(etat, coffre), qui.etiquettes(nom));
+			for (String crate : crateIds) {
+				String crateId = identifier(crate);
+				playerTotalOpens.set(playerData.opens(data, crate), ref.labels(crateId));
+				playerCooldown.set(playerData.cooldownSeconds(data, crate), ref.labels(crateId));
 			}
-			if (!detailGains) {
+			if (!detailWins) {
 				continue;
 			}
-			for (String coffre : idCoffres) {
-				CrateType type = gestionnaireCoffres.getTypeByIdentifier(coffre);
+			for (String crate : crateIds) {
+				CrateType type = cratesManager.getTypeByIdentifier(crate);
 				if (type == null) {
 					continue;
 				}
-				for (Reward lot : type.getRegisteredRewards()) {
-					int n = donnees.gains(etat, lot.getIdentifier());
+				for (Reward reward : type.getRegisteredRewards()) {
+					int n = playerData.wins(data, reward.getIdentifier());
 					if (n > 0) {
-						gainsJoueur.set(n, qui.etiquettes(identifiant(lot.getIdentifier())));
+						playerRewardWins.set(n, ref.labels(identifier(reward.getIdentifier())));
 					}
 				}
 			}
@@ -527,43 +524,43 @@ public final class CratesCollector implements Collector, Listener {
 	}
 
 	/**
-	 * Tout ce qui est encore en attente au relevé suivant est un refus.
+	 * Anything still pending at the next scrape is a refusal.
 	 *
-	 * <p>LIMITE ASSUMÉE : {@code CratePreOpenEvent} n'est déclenché que par le chemin normal du
-	 * plugin. Un autre plugin appelant {@code CrateInstance.openCrate()} directement produirait
-	 * une ouverture sans tentative correspondante — les deux compteurs ne sont donc pas liés par
-	 * construction, seulement en pratique.
+	 * <p>Acknowledged limitation: {@code CratePreOpenEvent} only fires through the plugin's
+	 * normal path. Another plugin calling {@code CrateInstance.openCrate()} directly would
+	 * produce an open with no matching attempt — the two counters aren't linked by
+	 * construction, only in practice.
 	 */
-	private void viderLesOrphelines() {
-		if (enAttente.isEmpty()) {
+	private void flushOrphaned() {
+		if (pending.isEmpty()) {
 			return;
 		}
-		for (var entree : Map.copyOf(enAttente).entrySet()) {
-			Tentative t = enAttente.remove(entree.getKey());
-			if (t != null) {
-				echecs.inc(t.coffre(), t.raisonProbable());
+		for (var entry : Map.copyOf(pending).entrySet()) {
+			Attempt a = pending.remove(entry.getKey());
+			if (a != null) {
+				failures.inc(a.crate(), a.likelyReason());
 			}
 		}
 	}
 
-	// ------------------------------------------------------------------ utilitaires
+	// ------------------------------------------------------------------ utilities
 
 	/**
-	 * Pourquoi cette ouverture risque de ne pas aboutir, d'après l'état AVANT la tentative.
+	 * Why this open is likely to fail, based on the state BEFORE the attempt.
 	 *
-	 * <p>Une déduction, pas une lecture : le plugin ne rend qu'un message traduit. L'ordre suit
-	 * celui de ses propres contrôles, pour que la raison la plus probable sorte en premier.
+	 * <p>An inference, not a read: the plugin only returns a translated message. The order
+	 * follows the plugin's own checks, so the most likely reason comes out first.
 	 */
-	private String raisonProbable(CrateType type, Player joueur) {
-		if (donnees != null) {
-			Object etat = PhoenixCratesAPI.getPlayersManager().getPlayerIfCached(joueur, false);
-			if (etat != null) {
-				if (donnees.attenteSecondes(etat, type.getIdentifier()) > 0) {
+	private String likelyReason(CrateType type, Player player) {
+		if (playerData != null) {
+			Object data = PhoenixCratesAPI.getPlayersManager().getPlayerIfCached(player, false);
+			if (data != null) {
+				if (playerData.cooldownSeconds(data, type.getIdentifier()) > 0) {
 					return "cooldown";
 				}
-				if (type.isKeyRequired() && aucuneCleVirtuelle(etat, type)) {
-					// « probable » au sens strict : le joueur peut porter une clé PHYSIQUE que
-					// l'on ne compte pas ici, faute d'un accès public pour la voir.
+				if (type.isKeyRequired() && noVirtualKey(data, type)) {
+					// "likely" in the strict sense: the player may be carrying a PHYSICAL key
+					// that we don't count here, for lack of a public accessor to see it.
 					return "no_key";
 				}
 			}
@@ -571,30 +568,29 @@ public final class CratesCollector implements Collector, Listener {
 		return type.getOpenMoneyCost() > 0 ? "money" : "other";
 	}
 
-	private boolean aucuneCleVirtuelle(Object etat, CrateType type) {
-		for (String cle : type.getLinkedKeysIds()) {
-			if (donnees.clesVirtuelles(etat, cle) > 0) {
+	private boolean noVirtualKey(Object data, CrateType type) {
+		for (String key : type.getLinkedKeysIds()) {
+			if (playerData.virtualKeys(data, key) > 0) {
 				return false;
 			}
 		}
 		return true;
 	}
 
-	private static String monnaie(CrateType type) {
-		var moteur = type.getCostEngineType();
-		// getName() et non name() : CostEngineType est une interface, pas une énumération —
-		// c'est ce qui laisse la porte ouverte aux moteurs de coût ajoutés par extension.
-		return moteur == null ? "unknown" : identifiant(moteur.getName());
+	private static String currency(CrateType type) {
+		var engine = type.getCostEngineType();
+		// getName() and not name(): CostEngineType is an interface, not an enum — which is
+		// what leaves the door open to cost engines added by extensions.
+		return engine == null ? "unknown" : identifier(engine.getName());
 	}
 
 	/**
-	 * Une étiquette stable.
+	 * A stable label.
 	 *
-	 * <p>Toujours l'identifiant et jamais {@code getDisplayName()}, qui porte des codes couleur
-	 * et change au gré de la mise en forme — une étiquette Prometheus ne doit pas bouger quand on
-	 * repeint un menu.
+	 * <p>Always the identifier, never {@code getDisplayName()}, which carries color codes and
+	 * changes with formatting — a Prometheus label must not move when a menu gets repainted.
 	 */
-	private static String identifiant(String brut) {
-		return brut == null || brut.isBlank() ? "unknown" : brut.toLowerCase(Locale.ROOT);
+	private static String identifier(String raw) {
+		return raw == null || raw.isBlank() ? "unknown" : raw.toLowerCase(Locale.ROOT);
 	}
 }

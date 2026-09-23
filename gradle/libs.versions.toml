@@ -1,21 +1,22 @@
-# Dépendances de COMPILATION seulement — aucun jar tiers n'est embarqué dans le
-# jar produit. L'API VaniaMetrics n'est pas ici : elle vient du dépôt git core
-# (voir gradle.properties et settings.gradle.kts).
+# COMPILE-ONLY dependencies — no third-party jar is bundled in the produced jar.
+# The VaniaMetrics API is not here: it comes from the core git repo (see
+# gradle.properties and settings.gradle.kts).
 #
-# Les plugins tiers viennent du dépôt Maven de Modrinth, à l'id de version exact :
-# c'est le même fichier, octet pour octet, que le lien de téléchargement.
+# Third-party plugins come from the Modrinth Maven repo, at the exact version
+# id: it's the same file, byte for byte, as the download link.
 #
-# Les empreintes SHA-256 de tout ce qui est résolu sont épinglées dans
-# gradle/verification-metadata.xml. Après une montée de version :
+# SHA-256 checksums of everything resolved are pinned in
+# gradle/verification-metadata.xml. After a version bump:
 #   ./gradlew --write-verification-metadata sha256 build
 #
-# paper-api EST UN INSTANTANÉ DATÉ : Paper ne publie pas de version figée de son
-# API, l'horodatage est la version. Il est lu comme une version figée (voir
-# settings.gradle.kts), donc SANS ses dépendances transitives : le bundle « paper »
-# déclare celles dont la compilation a besoin, aux versions du .pom de paper-api.
-# PhoenixCrates Lite — classes en 52 (Java 8), donc lisibles par javac --release 21 :
-# contrairement à ExcellentEconomy, l'API se compile directement. Seule la classe
-# interne managers.players.PlayerData passe par la réflexion, et c'est un choix.
+# paper-api is a dated snapshot: Paper does not publish a fixed version of its
+# API, the timestamp is the version. It's read as a fixed version (see
+# settings.gradle.kts), so WITHOUT its transitive dependencies: the "paper"
+# bundle declares the ones compilation needs, at the versions from paper-api's
+# .pom. PhoenixCrates Lite — classes at 52 (Java 8), so readable by
+# javac --release 21: unlike ExcellentEconomy, the API compiles directly. Only
+# the internal class managers.players.PlayerData goes through reflection, and
+# that's a deliberate choice.
 [versions]
 paper-api = "1.21.11-R0.1-20260511.115010-91"
 adventure = "4.26.1"

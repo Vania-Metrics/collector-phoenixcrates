@@ -1,22 +1,22 @@
 # colecteur-phoenixcrates
 
-Collecteur VaniaMetrics pour phoenixcrates. Un module = un jar, chargé par la plateforme si — et seulement si — le noyau est présent.
+VaniaMetrics collector for PhoenixCrates. A module is one jar, loaded by the platform if and only if the core is present.
 
-## Construire
+## Build
 
 ```sh
-./gradlew build                                # build/libs/VaniaMetrics-<Nom>-<v>.jar
-./gradlew build -PvaniaCore.ref=main           # API d'une autre ref de core
-./gradlew build -PvaniaCore.dir=../core        # API d'un core local (développement de l'API)
-./gradlew compileJava                          # compile seulement
+./gradlew build                                # build/libs/VaniaMetrics-<Name>-<v>.jar
+./gradlew build -PvaniaCore.ref=main           # API from another core ref
+./gradlew build -PvaniaCore.dir=../core        # API from a local core (API development)
+./gradlew compileJava                          # compile only
 ```
 
-L'API vient du dépôt git [Vania-Metrics/core](https://github.com/Vania-Metrics/core), à la ref de `gradle.properties` (`vaniaCore.ref`). Gradle le clone dans `.gradle/vania-core` et l'inclut comme build composite : `fr.samflix:vania-metrics-api` est compilé depuis ses sources à cette ref. La version du jar produit est celle de son `Version.java`.
+The API comes from the git repo [Vania-Metrics/core](https://github.com/Vania-Metrics/core), at the ref from `gradle.properties` (`vaniaCore.ref`). Gradle clones it into `.gradle/vania-core` and includes it as a composite build: `fr.samflix:vania-metrics-api` is compiled from its sources at that ref. The produced jar's version is that of its `Version.java`.
 
-Monter de version : changer `vaniaCore.ref` (un tag `vX.Y.Z`).
+To bump the version: change `vaniaCore.ref` (a `vX.Y.Z` tag).
 
-## Dépendances
+## Dependencies
 
-- `gradle.properties` — dépôt et ref du noyau, d'où vient l'API.
-- `gradle/libs.versions.toml` — paper-api, velocity-api, et les plugins ciblés (dépôt Maven de Modrinth), à la **compilation seulement**.
-- `gradle/verification-metadata.xml` — empreintes SHA-256 de tout ce qui est résolu. Après une montée de version : `./gradlew --write-verification-metadata sha256 build`.
+- `gradle.properties` — the core's repo and ref, where the API comes from.
+- `gradle/libs.versions.toml` — paper-api, velocity-api, and the targeted plugins (Modrinth Maven repo), **compile-only**.
+- `gradle/verification-metadata.xml` — SHA-256 checksums of everything resolved. After a version bump: `./gradlew --write-verification-metadata sha256 build`.

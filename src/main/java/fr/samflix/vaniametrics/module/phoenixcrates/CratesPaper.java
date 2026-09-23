@@ -12,68 +12,68 @@ import fr.samflix.vaniametrics.api.VaniaMetrics;
 import fr.samflix.vaniametrics.api.VaniaMetricsProvider;
 
 /**
- * Métriques PhoenixCrates.
+ * PhoenixCrates metrics.
  *
- * <p>DEUX NOMS POUR UN MÊME PLUGIN, et c'est ce qui interdit un {@code depend}. La version
- * gratuite s'appelle {@code PhoenixCratesLite}, la payante {@code PhoenixCrates} — le jar est le
- * même, seul le nom déclaré change, et c'est littéralement ce nom qui décide de l'édition côté
- * plugin. Un {@code depend} sur l'un ferait refuser ce module par Bukkit là où l'autre est
- * installé.
+ * <p>Two names for the same plugin, which rules out a {@code depend}. The free edition is named
+ * {@code PhoenixCratesLite}, the paid one {@code PhoenixCrates} — the jar is the same, only the
+ * declared name changes, and that name is literally what decides the edition on the plugin's
+ * side. A {@code depend} on either would get this module rejected by Bukkit wherever the other
+ * is installed.
  *
- * <p>{@code softdepend} ne garantit que l'ORDRE de chargement, jamais la présence. C'est donc à
- * cette classe de vérifier, et de se taire proprement sinon.
+ * <p>{@code softdepend} only guarantees load ORDER, never presence. So it's up to this class to
+ * check, and to stay quiet otherwise.
  */
 public final class CratesPaper extends JavaPlugin implements Listener {
 
-	private static final String[] NOMS = {"PhoenixCratesLite", "PhoenixCrates"};
+	private static final String[] NAMES = {"PhoenixCratesLite", "PhoenixCrates"};
 
-	private CratesCollector collecteur;
+	private CratesCollector collector;
 
 	@Override
 	public void onEnable() {
-		Plugin coffres = trouver();
-		if (coffres == null) {
-			getLogger().warning("PhoenixCrates n'est pas installé — aucun coffre ne sera mesuré.");
+		Plugin crates = find();
+		if (crates == null) {
+			getLogger().warning("PhoenixCrates is not installed — no crate will be measured.");
 			return;
 		}
 
-		VaniaMetrics metriques = VaniaMetricsProvider.get();
-		collecteur = new CratesCollector(metriques.plateforme(), metriques.config());
+		VaniaMetrics metrics = VaniaMetricsProvider.get();
+		collector = new CratesCollector(metrics.platform(), metrics.config());
 
-		// ON ENREGISTRE MÊME SI L'ÉTAT PAR JOUEUR ÉCHOUE, contrairement au module d'économie.
-		// Là-bas tout passait par la réflexion, donc un échec ne laissait rien à mesurer. Ici
-		// dix compteurs événementiels restent parfaitement valides : les jeter parce que le
-		// stock de clés est hors de portée serait perdre l'essentiel pour l'accessoire.
-		collecteur.brancherEtat(coffres.getClass().getClassLoader());
+		// WE REGISTER EVEN IF PER-PLAYER STATE FAILS, unlike the economy module. There
+		// everything went through reflection, so a failure left nothing to measure. Here ten
+		// event-driven counters remain perfectly valid: dropping them because the key stock is
+		// out of reach would lose the essential for the sake of the accessory.
+		collector.bindState(crates.getClass().getClassLoader());
 
-		metriques.enregistrer(collecteur);
-		Bukkit.getPluginManager().registerEvents(collecteur, this);
+		metrics.register(collector);
+		Bukkit.getPluginManager().registerEvents(collector, this);
 		Bukkit.getPluginManager().registerEvents(this, this);
 	}
 
 	@Override
 	public void onDisable() {
-		if (collecteur != null) {
-			VaniaMetricsProvider.chercher().ifPresent(m -> m.retirer(collecteur));
+		if (collector != null) {
+			VaniaMetricsProvider.find().ifPresent(m -> m.unregister(collector));
 		}
 	}
 
 	/**
-	 * L'état par joueur meurt avec la session.
+	 * Per-player state dies with the session.
 	 *
-	 * <p>Sans ça, la carte des ouvertures en cours grossirait d'une entrée par joueur ayant
-	 * quitté pendant une animation, et pour toujours.
+	 * <p>Without this, the map of in-progress opens would grow by one entry per player who quit
+	 * mid-animation, forever.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onQuit(PlayerQuitEvent e) {
-		if (collecteur != null) {
-			collecteur.oublier(e.getPlayer().getUniqueId().toString());
+		if (collector != null) {
+			collector.forget(e.getPlayer().getUniqueId().toString());
 		}
 	}
 
-	private static Plugin trouver() {
-		for (String nom : NOMS) {
-			Plugin p = Bukkit.getPluginManager().getPlugin(nom);
+	private static Plugin find() {
+		for (String name : NAMES) {
+			Plugin p = Bukkit.getPluginManager().getPlugin(name);
 			if (p != null && p.isEnabled()) {
 				return p;
 			}

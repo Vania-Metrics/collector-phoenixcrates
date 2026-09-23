@@ -1,30 +1,28 @@
-// =============================================================================
-// colecteur-phoenixcrates — un jar VaniaMetrics-<Nom>-<v>.jar dans build/libs/
+// colecteur-phoenixcrates — a VaniaMetrics-<Name>-<v>.jar under build/libs/
 //
-// Un module = un jar, chargé par la plateforme si — et seulement si — le noyau
-// est présent (« depend: [VaniaMetrics] » dans plugin.yml). Aucun jar tiers
-// n'y est embarqué : tout ce qui suit est compileOnly.
-// =============================================================================
+// A module is one jar, loaded by the platform if and only if the core is
+// present ("depend: [VaniaMetrics]" in plugin.yml). No third-party jar is
+// bundled: everything below is compileOnly.
 plugins {
     java
 }
 
-// LA VERSION EST CELLE DE L'API contre laquelle ce jar est compilé : lue dans le
-// Version.java du core inclus, jamais recopiée.
+// The version is that of the API this jar is compiled against: read from the
+// included core's Version.java, never copied.
 val vaniaCoreDir = gradle.extra["vaniaCoreDir"] as File
 val versionSource = vaniaCoreDir.resolve("api/src/main/java/fr/samflix/vaniametrics/api/Version.java")
-version = Regex("""VALEUR = "([^"]+)"""").find(versionSource.readText())?.groupValues?.get(1)
-    ?: error("version illisible dans $versionSource")
+version = Regex("""VALUE = "([^"]+)"""").find(versionSource.readText())?.groupValues?.get(1)
+    ?: error("could not read version from $versionSource")
 
 dependencies {
-    // Relié par le build composite au projet api/ du dépôt core.
+    // Wired by the composite build to the core repo's api/ project.
     compileOnly("fr.samflix:vania-metrics-api")
     compileOnly(libs.bundles.paper)
     compileOnly(libs.phoenixcrates)
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    // --release 21 : le lobby vise Java 25, le proxy Java 21. Le plus petit commande.
+    // --release 21: the lobby targets Java 25, the proxy Java 21. The lower one wins.
     options.release = 21
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(listOf("-Xlint:all,-path,-processing,-options", "-Werror"))
@@ -36,13 +34,12 @@ tasks.processResources {
     filesMatching("plugin.yml") { filter { it.replace("\${version}", v) } }
 }
 
-// LE NOM DU JAR VIENT DE « name: », pas de la classe d'entrée : la liste du dépôt
-// serveur désigne les modules par leur nom de plugin. Une seule source, celle que
-// Bukkit affiche.
+// The jar name comes from "name:", not the entry class: the server repo lists
+// modules by their plugin name. One source, the one Bukkit displays.
 val pluginYml = file("src/main/resources/plugin.yml")
-val nomAffiche = Regex("""(?m)^name: VaniaMetrics-(\S+)""").find(pluginYml.readText())?.groupValues?.get(1)
-    ?: error("$pluginYml : « name: » attendu sous la forme VaniaMetrics-<Nom>")
+val displayName = Regex("""(?m)^name: VaniaMetrics-(\S+)""").find(pluginYml.readText())?.groupValues?.get(1)
+    ?: error("$pluginYml: expected \"name:\" in the form VaniaMetrics-<Name>")
 
 tasks.jar {
-    archiveFileName = "VaniaMetrics-$nomAffiche-$version.jar"
+    archiveFileName = "VaniaMetrics-$displayName-$version.jar"
 }
