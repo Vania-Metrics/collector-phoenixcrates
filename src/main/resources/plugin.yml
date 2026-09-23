@@ -19,3 +19,4 @@ authors: [mc-vania]
 description: "PhoenixCrates metrics: opens, rewards drawn, key stock."
 depend: [VaniaMetrics]
 softdepend: [PhoenixCratesLite, PhoenixCrates]
+folia-supported: true

@@ -119,8 +119,16 @@ public final class CratesCollector implements Collector, Listener {
 	 */
 	private final Map<String, Attempt> pending = new ConcurrentHashMap<>();
 
-	/** What we knew at the moment the open was requested. */
-	private record Attempt(String crate, String likelyReason) {}
+	/**
+	 * How long an attempt stays pending before it counts as a failure. An open completes in the
+	 * tick it was requested in; but on Folia that tick runs on the player's region thread while
+	 * the flush runs on the global one, and the flush could otherwise land between the request
+	 * and its completion, counting one open as both a failure and a success.
+	 */
+	private static final long PENDING_GRACE_NANOS = 5_000_000_000L;
+
+	/** What we knew at the moment the open was requested, and when. */
+	private record Attempt(String crate, String likelyReason, long since) {}
 
 	public CratesCollector(Platform platform, Config config) {
 		this.platform = platform;
@@ -301,7 +309,7 @@ public final class CratesCollector implements Collector, Listener {
 		// for 11 opens and 3 failures — seventeen vanished. What gets overwritten is, by
 		// definition, an attempt that didn't complete: it's a failure.
 		Attempt previous = pending.put(e.getPlayer().getUniqueId().toString(),
-				new Attempt(crate, likelyReason(type, e.getPlayer())));
+				new Attempt(crate, likelyReason(type, e.getPlayer()), System.nanoTime()));
 		if (previous != null) {
 			failures.inc(previous.crate(), previous.likelyReason());
 		}
@@ -465,6 +473,14 @@ public final class CratesCollector implements Collector, Listener {
 		keys.set(physical, "false");
 	}
 
+	/**
+	 * Per-player state, read from PhoenixCrates' cache.
+	 *
+	 * <p>On Paper this runs on the main thread, which also writes that cache: reads and writes
+	 * cannot overlap. On Folia it runs on the global region while each player's data changes on
+	 * that player's region thread: the values are best effort, and a read that fails counts as 0
+	 * (see {@code PlayerDataBridge}) rather than stopping the collection.
+	 */
 	private void collectPlayers() {
 		if (playerData == null) {
 			return;
@@ -535,9 +551,14 @@ public final class CratesCollector implements Collector, Listener {
 		if (pending.isEmpty()) {
 			return;
 		}
+		long now = System.nanoTime();
 		for (var entry : Map.copyOf(pending).entrySet()) {
-			Attempt a = pending.remove(entry.getKey());
-			if (a != null) {
+			Attempt a = entry.getValue();
+			if (now - a.since() < PENDING_GRACE_NANOS) {
+				continue;
+			}
+			// Only this attempt: the player may have asked again since the copy was taken.
+			if (pending.remove(entry.getKey(), a)) {
 				failures.inc(a.crate(), a.likelyReason());
 			}
 		}
