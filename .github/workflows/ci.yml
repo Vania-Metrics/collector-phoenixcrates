@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   ci:
-    uses: Vania-Metrics/core/.github/workflows/collector.yml@v0.5.0
+    uses: Vania-Metrics/core/.github/workflows/collector.yml@v0.6.0
     with:
       cells: ${{ inputs.cells || (github.ref_type == 'tag' && 'all') || 'blocking' }}
       platforms: ${{ inputs.platforms }}

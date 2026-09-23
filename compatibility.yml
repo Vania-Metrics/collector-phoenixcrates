@@ -5,7 +5,7 @@
 #     untested: expected to load (Bukkit API), never checked on that server
 #     folia: no until plugin.yml declares folia-supported: true
 minecraft: 1.21.11
-core: v0.5.0
+core: v0.6.0
 plugin:
   name: PhoenixCrates Lite
   compiled-against: 6.2.1
