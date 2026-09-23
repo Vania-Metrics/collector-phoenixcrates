@@ -1,0 +1,40 @@
+# Dépendances de COMPILATION seulement — aucune ne part dans les jars produits.
+#
+# Format : <sha256>  <url>
+#
+# LES JARS DES PLUGINS TIERS NE SONT PAS ICI. build.sh les lit dans
+# chart/values.yaml, qui les épingle déjà avec leur empreinte. Les dupliquer
+# ferait deux sources de vérité pour une même version, et un jour elles
+# divergeraient sans que rien ne le signale.
+#
+# SPARK EST COMPILÉ CONTRE LA VERSION DE PAPER, la plus ANCIENNE des deux qui
+# tournent ici — celle que Paper embarque date de 2024, celle du proxy de 2026.
+# Compiler contre la récente ferait un jar qui échoue sur le lobby avec un
+# NoClassDefFoundError, ce qui est exactement arrivé. Les deux méthodes que seule
+# la récente possède sont appelées par réflexion, et publiées seulement là où
+# elles existent.
+#
+# paper-api EST UN INSTANTANÉ DATÉ. Paper ne publie pas de version figée de son
+# API : l'horodatage est la version. Pour le relever à nouveau, lire
+# maven-metadata.xml du répertoire 1.21.11-R0.1-SNAPSHOT. L'empreinte ci-dessous
+# a été vérifiée identique à celle du jar que le serveur charge réellement.
+#
+# gson EST LÀ POUR LE PROCESSEUR D'ANNOTATIONS DE VELOCITY, pas pour le code :
+# c'est lui qui écrit velocity-plugin.json à partir de @Plugin, et il sérialise
+# en gson. Sans lui, javac s'arrête sur un NoClassDefFoundError levé DEPUIS le
+# processeur — un message qui ne dit pas du tout qu'il manque une dépendance de
+# compilation.
+c577b181c11a8674310e56c92a91e31c010b7f04c9bd10b91c3be18374401070  https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.11-R0.1-SNAPSHOT/paper-api-1.21.11-R0.1-20260511.115010-91.jar
+c4c3fcf3d5ef20bb7d5839211d6c27c57da4dbcc94cc44ecc304fa8dccb55ff0  https://repo.papermc.io/repository/maven-public/com/velocitypowered/velocity-api/3.5.1/velocity-api-3.5.1.jar
+551e536b9ea868f30e72c7900a309b35124ee7d4889fa3b3aed0910299751a26  https://repo1.maven.org/maven2/net/kyori/adventure-api/4.26.1/adventure-api-4.26.1.jar
+eec172d63db77b40eb7abeeb25f65eedea89bd30264d057b68b12fecb731be5e  https://repo1.maven.org/maven2/net/kyori/adventure-key/4.26.1/adventure-key-4.26.1.jar
+c9237ffecb05428f6eff86216246ac70ce0b47b04c08ea7ca35020fde57f8492  https://repo1.maven.org/maven2/net/kyori/examination-api/1.3.0/examination-api-1.3.0.jar
+1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab  https://repo1.maven.org/maven2/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar
+33b1d8b2c4b00f7d4f4b4931424274f3f729474ce3a87cea09a879976a1dcaeb  https://repo1.maven.org/maven2/org/checkerframework/checker-qual/3.49.2/checker-qual-3.49.2.jar
+27a770dc7ce50500918bb8c3c0660c98290630ec796b5e3cf6b90f403b3033c6  https://repo1.maven.org/maven2/org/jetbrains/annotations/24.1.0/annotations-24.1.0.jar
+4130e50bfac48099c860f0d903b91860c81a249c90f38245f8fed58fc817bc26  https://repo1.maven.org/maven2/com/google/inject/guice/5.1.0/guice-5.1.0.jar
+91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff  https://repo1.maven.org/maven2/javax/inject/javax.inject/1/javax.inject-1.jar
+a12578dde1ba00bd9b816d388a0b879928d00bab3c83c240f7013bf4196c579a  https://repo1.maven.org/maven2/org/slf4j/slf4j-api/2.0.16/slf4j-api-2.0.16.jar
+4bf0e2c5af8e4525c96e8fde17a4f7307f97f8478f11c4c8e35a0e3298ae4e90  https://repo1.maven.org/maven2/com/google/guava/guava/33.3.1-jre/guava-33.3.1-jre.jar
+f99a3ba0cd3df1aee7b8f285fe7967a28d9c0cea37fa6621b643da919dcfb819  https://repo.papermc.io/repository/maven-public/me/lucko/spark-api/0.1-SNAPSHOT/spark-api-0.1-20240720.200737-2.jar
+57928d6e5a6edeb2abd3770a8f95ba44dce45f3b23b7a9dc2b309c581552a78b  https://repo1.maven.org/maven2/com/google/code/gson/gson/2.11.0/gson-2.11.0.jar

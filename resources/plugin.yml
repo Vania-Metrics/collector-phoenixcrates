@@ -1,0 +1,20 @@
+# Métriques PhoenixCrates — les coffres, les clés, et surtout LA LOI DU HASARD.
+#
+# La distribution réelle des récompenses ne se lit nulle part en jeu. Comparée
+# aux poids configurés, elle se lit ici : un lot annoncé à 2 % qui tombe à 0,5 %
+# se voit en une requête.
+#
+# « depend » EST IMPOSSIBLE, et ce n'est pas un oubli. Le plugin s'appelle
+# PhoenixCratesLite en version gratuite et PhoenixCrates en payante — c'est
+# littéralement ce nom qui décide de l'édition côté plugin. Un « depend » sur
+# l'un ferait refuser ce jar par Bukkit là où l'autre est installé. « softdepend »
+# ne garantit que l'ORDRE de chargement, pas la présence : c'est donc CratesPaper
+# qui vérifie, comme le fait le module spark pour une raison voisine.
+name: VaniaMetrics-Crates
+version: ${version}
+main: fr.samflix.vaniametrics.module.phoenixcrates.CratesPaper
+api-version: '1.21'
+authors: [mc-vania]
+description: "Métriques PhoenixCrates : ouvertures, récompenses tirées, stock de clés."
+depend: [VaniaMetrics]
+softdepend: [PhoenixCratesLite, PhoenixCrates]
