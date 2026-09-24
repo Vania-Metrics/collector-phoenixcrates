@@ -36,3 +36,16 @@ jobs:
       platforms: ${{ inputs.platforms }}
     secrets:
       CORE_DEPLOY_KEY: ${{ secrets.VANIA_CORE_DEPLOY_KEY }}
+
+  # Records the result on the organization's status page (Vania-Metrics/.github, status branch).
+  status:
+    needs: ci
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: Vania-Metrics/.github/.github/workflows/status.yml@main
+    with:
+      result: ${{ needs.ci.result }}
+    secrets:
+      STATUS_DEPLOY_KEY: ${{ secrets.VANIA_STATUS_DEPLOY_KEY }}
