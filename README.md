@@ -1,3 +1,5 @@
+<img src="icon.png" alt="" width="96" align="right">
+
 # collector-phoenixcrates
 
 VaniaMetrics collector for PhoenixCrates. A module is one jar, loaded by the platform if and only if the core is present.
