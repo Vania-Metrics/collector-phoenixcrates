@@ -11,9 +11,9 @@ VaniaMetrics collector for PhoenixCrates. A module is one jar, loaded by the pla
 ./gradlew compileJava                          # compile only
 ```
 
-The API comes from the git repo [Vania-Metrics/core](https://github.com/Vania-Metrics/core), at the ref from `gradle.properties` (`vaniaCore.ref`). Gradle clones it into `.gradle/vania-core` and includes it as a composite build: `fr.samflix:vania-metrics-api` is compiled from its sources at that ref. The produced jar's version is that of its `Version.java`.
+The API comes from the git repo [Vania-Metrics/core](https://github.com/Vania-Metrics/core), at the ref from `gradle.properties` (`vaniaCore.ref`). Gradle clones it into `.gradle/vania-core` and includes it as a composite build: `fr.samflix:vania-metrics-api` is compiled from its sources at that ref.
 
-To bump the version: change `vaniaCore.ref` (a `vX.Y.Z` tag).
+The jar's version is this collector's own, in `version.txt`, kept by release-please. Commit messages start with a type (`feat:`, `fix:`, `chore:`…): every push to `main` updates a release pull request, and merging it publishes the GitHub release with the jar. Moving to a new core is a `feat: core API x.y.z` commit that changes `vaniaCore.ref` (a `vX.Y.Z` tag).
 
 ## Dependencies
 

@@ -1,0 +1,28 @@
+# Releases this collector: on every push to main, release-please keeps a release pull request
+# up to date, and merging it publishes the GitHub release with the jar. Run by hand, it publishes
+# the current version as it is. The steps live in Vania-Metrics/.github, .github/workflows/release.yml.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: Vania-Metrics/.github/.github/workflows/release.yml@main
+    with:
+      publish-current: ${{ github.event_name == 'workflow_dispatch' }}
+    secrets:
+      CORE_DEPLOY_KEY: ${{ secrets.VANIA_CORE_DEPLOY_KEY }}

@@ -8,7 +8,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['src/**', '*.gradle.kts', 'gradle/**', 'gradle.properties', 'compatibility.yml', 'collector-test.yml', '.github/**']
+    paths: ['src/**', '*.gradle.kts', 'gradle/**', 'gradle.properties', 'version.txt', 'compatibility.yml', 'collector-test.yml', '.github/**']
   workflow_dispatch:
     inputs:
       cells:
