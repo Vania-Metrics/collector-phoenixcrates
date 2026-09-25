@@ -20,3 +20,7 @@ The jar's version is this collector's own, in `version.txt`, kept by release-ple
 - `gradle.properties` — the core's repo and ref, where the API comes from.
 - `gradle/libs.versions.toml` — paper-api, velocity-api, and the targeted plugins (Modrinth Maven repo), **compile-only**.
 - `gradle/verification-metadata.xml` — SHA-256 checksums of everything resolved. After a version bump: `./gradlew --write-verification-metadata sha256 build`.
+
+## License
+
+[GNU General Public License v3.0](LICENSE).
