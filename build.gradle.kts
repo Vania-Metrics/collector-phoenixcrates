@@ -34,6 +34,7 @@ tasks.processResources {
 
 tasks.jar {
     archiveFileName = "vania-metrics-${rootProject.name}-$version.jar"
+    from("LICENSE") { into("META-INF") }
 }
 
 // Integration tests on real servers: see testkit/collector-it.gradle.kts in the core.
